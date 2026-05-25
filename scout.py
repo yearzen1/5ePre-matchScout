@@ -7,7 +7,7 @@ import urllib.request
 import urllib.parse
 import threading
 import time
-import subprocess
+
 import os
 import ctypes
 import websocket as ws_lib
@@ -270,22 +270,6 @@ class Scout:
         if self.on_match_found:
             self.on_match_found(player_list)
 
-    def _ensure_5e_killed(self):
-        for proc in ("5EClient.exe", "ac_updater.exe"):
-            subprocess.run(["taskkill", "/f", "/im", proc],
-                           capture_output=True, timeout=5)
-        for _ in range(10):
-            if not self.running:
-                return False
-            out = subprocess.run(
-                ["tasklist", "/fi", "imagename eq 5EClient.exe"],
-                capture_output=True, text=True, timeout=5
-            )
-            if "5EClient.exe" not in out.stdout:
-                return True
-            time.sleep(0.5)
-        return False
-
     def _ensure_steam_running(self):
         if not self.steam_path:
             self._log("Steam 路径未配置，跳过自动启动 Steam")
@@ -329,12 +313,7 @@ class Scout:
                 self._log("未配置 Steam 路径，请在设置中填写（若 Steam 已在运行可忽略）")
             else:
                 self._ensure_steam_running()
-            self._log("检测到 5E 未开启调试模式，正在关闭原进程...")
-            if not self._ensure_5e_killed():
-                self._log("无法关闭现有的 5E 客户端，请手动关闭后重试")
-                self.running = False
-                self.on_stopped()
-                return
+            self._log("请手动关闭已运行的 5E 客户端，程序将自动启动调试模式...")
             if not self.running:
                 return
             self._log("启动 5E 客户端（调试模式）...")
