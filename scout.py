@@ -156,11 +156,12 @@ def extract_player_data(nickname: str, uuid: str, team: str, is_me: bool, stats:
 
 
 class Scout:
-    def __init__(self, on_log=None, on_match_found=None, on_stopped=None, client_path=None, my_nickname=None):
+    def __init__(self, on_log=None, on_match_found=None, on_stopped=None, client_path=None, my_nickname=None, steam_path=None):
         self.on_log = on_log or (lambda msg: None)
         self.on_match_found = on_match_found or (lambda players: None)
         self.on_stopped = on_stopped or (lambda: None)
         self.client_path = client_path if client_path else None
+        self.steam_path = steam_path if steam_path else None
         self.my_uuid = None
         self.my_nickname = my_nickname
         self.running = False
@@ -285,6 +286,20 @@ class Scout:
             time.sleep(0.5)
         return False
 
+    def _ensure_steam_running(self):
+        if not self.steam_path:
+            self._log("Steam 路径未配置，跳过自动启动 Steam")
+            return
+        self._log("正在启动 Steam...")
+        ret = ctypes.windll.shell32.ShellExecuteW(
+            None, "runas", self.steam_path, "", None, 1
+        )
+        if ret <= 32:
+            self._log(f"Steam 启动失败，错误码: {ret}")
+            return
+        self._log("等待 5 秒确保 Steam 就绪...")
+        time.sleep(5)
+
     def _start_ws(self):
         if not self.running:
             return
@@ -300,11 +315,20 @@ class Scout:
         else:
             if not self.running:
                 return
-            if not self.client_path:
-                self._log("未配置客户端路径，且 5E 客户端未运行（请先在设置中填好路径）")
+            if not self.client_path and not self.steam_path:
+                self._log("5E 客户端路径和 Steam 路径均未配置，请在设置中填写")
                 self.running = False
                 self.on_stopped()
                 return
+            if not self.client_path:
+                self._log("未配置 5E 客户端路径，请在设置中填写")
+                self.running = False
+                self.on_stopped()
+                return
+            if not self.steam_path:
+                self._log("未配置 Steam 路径，请在设置中填写（若 Steam 已在运行可忽略）")
+            else:
+                self._ensure_steam_running()
             self._log("检测到 5E 未开启调试模式，正在关闭原进程...")
             if not self._ensure_5e_killed():
                 self._log("无法关闭现有的 5E 客户端，请手动关闭后重试")

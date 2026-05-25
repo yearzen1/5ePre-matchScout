@@ -11,9 +11,10 @@ else:
     _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(_BASE_DIR, "scout_config.json")
 DEFAULT_CONFIG = {
-    "client_path": "D:\\5eclient\\5EClient.exe",
+    "client_path": "",
     "cdp_port": 9222,
     "my_nickname": "",
+    "steam_path": "",
 }
 
 STATUS_COLORS = {
@@ -158,6 +159,7 @@ class App(ctk.CTk):
             on_match_found=self._on_match_found,
             client_path=self.config.get("client_path") or None,
             my_nickname=self.config.get("my_nickname") or None,
+            steam_path=self.config.get("steam_path") or None,
         )
         threading.Thread(target=scout.start, daemon=True).start()
 
@@ -240,7 +242,7 @@ class App(ctk.CTk):
     def _open_settings(self):
         dialog = ctk.CTkToplevel(self)
         dialog.title("设置")
-        dialog.geometry("480x260")
+        dialog.geometry("480x340")
         dialog.transient(self)
         dialog.grab_set()
 
@@ -263,6 +265,15 @@ class App(ctk.CTk):
         ctk.CTkEntry(dialog, textvariable=nick_var, width=400, placeholder_text="例如: MyPlayerName").pack(padx=20, pady=(0, 2))
 
         ctk.CTkLabel(
+            dialog, text="Steam 路径（留空则仅警告不启动 Steam）",
+            font=ctk.CTkFont(size=13),
+            anchor="w",
+        ).pack(padx=20, pady=(10, 2), fill="x")
+
+        steam_var = ctk.StringVar(value=self.config.get("steam_path", ""))
+        ctk.CTkEntry(dialog, textvariable=steam_var, width=400).pack(padx=20, pady=(0, 2))
+
+        ctk.CTkLabel(
             dialog, text="⚠ 修改设置后需重启程序生效",
             font=ctk.CTkFont(size=11), text_color="gray",
         ).pack(padx=20, pady=(2, 0), anchor="w")
@@ -273,6 +284,7 @@ class App(ctk.CTk):
         def save():
             self.config["client_path"] = path_var.get()
             self.config["my_nickname"] = nick_var.get().strip()
+            self.config["steam_path"] = steam_var.get()
             self._save_config()
             dialog.destroy()
 
