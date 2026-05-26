@@ -201,7 +201,7 @@ class Scout:
                 msg_code, body, seq = decode_comet_frame(raw)
                 if msg_code is None or msg_code == 0:
                     return
-                if msg_code == 39583794 or msg_code == 42205234:
+                if "game_ctx" in body:
                     self._handle_game_ctx(body)
                 # elif msg_code not in self._seen_codes:
                 #     self._seen_codes.add(msg_code)
