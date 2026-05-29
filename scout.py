@@ -1,6 +1,7 @@
 import struct
 import json
 import sys
+import re
 import base64
 import datetime
 import urllib.request
@@ -19,6 +20,15 @@ API_SEARCH = "https://arena.5eplay.com/api/search/player/1/16"
 API_ID_TRANSFER = "https://gate.5eplay.com/userinterface/http/v1/userinterface/idTransfer"
 API_PLAYER_HOME = "https://gate.5eplay.com/crane/http/api/data/player/home"
 API_USER_HEADER = "https://gate.5eplay.com/userinterface/pt/v1/userinterface/header"
+
+UUID_RE = re.compile(r'^([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})$', re.I)
+
+
+def normalize_uuid(s: str) -> str:
+    m = UUID_RE.match(s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}-{m.group(4)}-{m.group(5)}"
+    return s
 
 ID_TRANSFER_HEADERS = {
     "accept": "*/*",
@@ -51,10 +61,13 @@ def http_post(url, headers, body):
     return json.loads(urllib.request.urlopen(req, timeout=10).read())
 
 
-def get_nickname(uuid: str) -> str:
-    data = http_get(f"{API_USER_HEADER}/{uuid}")
-    ud = data.get("data", {}).get("header", {}).get("user_data", {})
-    return ud.get("nickname") or ud.get("username") or "?"
+def get_nickname(uuid: str) -> str | None:
+    try:
+        data = http_get(f"{API_USER_HEADER}/{uuid}")
+        ud = data.get("data", {}).get("header", {}).get("user_data", {})
+        return ud.get("nickname") or ud.get("username") or None
+    except Exception:
+        return None
 
 
 def get_uuid_from_nickname(nickname: str) -> str | None:
@@ -79,15 +92,19 @@ def scout_player(nickname: str, uuid: str | None = None) -> dict:
     result = {"nickname": nickname, "uuid": uuid, "seasons": {}, "account": {}}
     if not uuid:
         return result
-    home = get_season_stats(uuid)
+    clean_uuid = normalize_uuid(uuid)
+    home = get_season_stats(clean_uuid)
     result["seasons"] = home.get("season_data", {})
-    user_data = http_get(f"{API_USER_HEADER}/{uuid}")
-    ud = user_data.get("data", {}).get("header", {}).get("user_data", {})
-    result["account"] = {
-        "status": ud.get("account_status", "?"),
-        "credit_score": ud.get("credit_score", "?"),
-        "reg_date": ud.get("reg_date", "?"),
-    }
+    try:
+        user_data = http_get(f"{API_USER_HEADER}/{uuid}")
+        ud = user_data.get("data", {}).get("header", {}).get("user_data", {})
+        result["account"] = {
+            "status": ud.get("account_status", "?"),
+            "credit_score": ud.get("credit_score", "?"),
+            "reg_date": ud.get("reg_date", "?"),
+        }
+    except Exception:
+        result["account"] = {"status": "?", "credit_score": "?", "reg_date": "?"}
     return result
 
 
@@ -123,9 +140,9 @@ def format_player_short(stats: dict) -> str:
     impact = now.get("impact", 0)
     level_id = now.get("level_id", 0)
     acct_status = STATUS_MAP.get(account.get("status", "?"), account.get("status", "?"))
+    acct_suffix = f" | 账号:{acct_status} 信誉:{account.get('credit_score','?')}" if account.get("status", "?") != "?" else ""
     return (f"{nickname} [{name}] Lv{level_id} | ELO:{elo} Rtg:{rating} ADR:{adr} RWS:{rws} | "
-            f"场次:{match_total} 胜:{win_total}({per_win*100:.0f}%) 爆头:{per_hs*100:.0f}% Impact:{impact} | "
-            f"账号:{acct_status} 信誉:{account.get('credit_score','?')}")
+            f"场次:{match_total} 胜:{win_total}({per_win*100:.0f}%) 爆头:{per_hs*100:.0f}% Impact:{impact}{acct_suffix}")
 
 
 def extract_player_data(nickname: str, uuid: str, team: str, is_me: bool, stats: dict) -> dict:
@@ -246,7 +263,9 @@ class Scout:
         for team_name, uid in all_players:
             try:
                 nickname = get_nickname(uid)
-                is_me = bool(self.my_uuid) and uid == self.my_uuid
+                if not nickname:
+                    nickname = uid[:8]
+                is_me = bool(self.my_uuid) and normalize_uuid(uid) == normalize_uuid(self.my_uuid)
                 if is_me:
                     self._log(f"  [{team_name}] {uid[:8]}... -> {nickname} (我)")
                 else:
@@ -259,7 +278,7 @@ class Scout:
             except Exception as e:
                 self._log(f"  [{team_name}] {uid[:8]}... 获取失败: {e}")
                 player_list.append({
-                    "nickname": "?", "uuid": uid, "team": team_name, "is_me": False,
+                    "nickname": uid[:8], "uuid": uid, "team": team_name, "is_me": False,
                     "level": 0, "season_name": "?", "elo": 0, "rating": 0, "adr": 0,
                     "rws": 0, "match_total": 0, "win_total": 0, "win_rate": 0,
                     "headshot_rate": 0, "impact": 0, "account_status": "?",
